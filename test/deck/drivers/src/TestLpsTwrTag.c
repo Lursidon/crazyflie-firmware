@@ -7,6 +7,8 @@
 #include "unity.h"
 #include "mock_libdw1000.h"
 #include "mock_cfassert.h"
+#include "mock_locodeck.h"
+#include "crtp_localization_serviceMocks.h"
 #include "dw1000Mocks.h"
 
 #ifdef ESTIMATOR_TYPE_kalman
@@ -28,11 +30,15 @@ static lpsAlgoOptions_t options;
 
 static void setTime(uint8_t* data, const dwTime_t* time);
 static void populatePacket(packet_t* packet, uint8_t seqNr, uint8_t type, locoAddress_t sourceAddress, locoAddress_t destinationAddress);
+static void populateLppPacket(packet_t* packet, char *data, int length, locoAddress_t sourceAddress, locoAddress_t destinationAddress);
 
 static void mockEventTimeoutHandling(const packet_t* expectedTxPacket);
 static void mockEventPacketSendHandling(dwTime_t* departureTime);
 static void mockEventPacketReceivedAnswerHandling(int dataLength, const packet_t* rxPacket, const dwTime_t* answerArrivalTagTime, const packet_t* expectedTxPacket);
 static void mockEventPacketReceivedReportHandling(int dataLength, const packet_t* rxPacket);
+static void mockSendLppShortHandling(const packet_t* expectedTxPacket, int datalength);
+
+static bool lpsGetLppShortCallbackForLppShortPacketSent(lpsLppShortPacket_t* shortPacket, int cmock_num_calls);
 
 static lpsAlgoOptions_t defaultOptions = {
   .tagAddress = 0xbccf000000000008,
@@ -46,9 +52,12 @@ static lpsAlgoOptions_t defaultOptions = {
   },
   .antennaDelay = 30000,
   .rangingFailedThreshold = 6,
-  .anchorPositionOk = false
+  .combinedAnchorPositionOk = false
 };
 
+static char * lppShortPacketData = "hello";
+static int lppShortPacketLength = 5;
+static int lppShortPacketDest = 3;
 
 void setUp(void) {
   dwGetData_resetMock();
@@ -79,6 +88,7 @@ void testNormalMessageSequenceShouldGenerateDistance() {
   packet_t expectedTxPacket1;
   populatePacket(&expectedTxPacket1, expectedSeqNr, LPS_TWR_POLL, defaultOptions.tagAddress, defaultOptions.anchorAddress[expectedAnchor]);
   mockEventTimeoutHandling(&expectedTxPacket1);
+  lpsGetLppShort_IgnoreAndReturn(false);
 
   // eventPacketSent (POLL)
   mockEventPacketSendHandling(&pollDepartureTagTime);
@@ -232,6 +242,28 @@ void testEventPacketReceivedWithTypeReportAndWrongSeqNrShouldReturn0() {
   TEST_ASSERT_EQUAL_UINT32(expected, actual);
 }
 
+void testThatLppShortPacketIsSentWhenAvailable() {
+  // Fixture
+  lpsGetLppShort_StubWithCallback(lpsGetLppShortCallbackForLppShortPacketSent);
+
+  packet_t expectedTxPacket;
+  populateLppPacket(&expectedTxPacket, lppShortPacketData, lppShortPacketLength, defaultOptions.tagAddress, defaultOptions.anchorAddress[lppShortPacketDest]);
+
+  mockSendLppShortHandling(&expectedTxPacket, lppShortPacketLength);
+
+  dwTime_t txTime = {.full = 0};
+  mockEventPacketSendHandling(&txTime);
+
+  // Test
+  uint32_t actual1 = uwbTwrTagAlgorithm.onEvent(&dev, eventTimeout);
+  uint32_t actual2 = uwbTwrTagAlgorithm.onEvent(&dev, eventPacketSent);
+
+  // Assert
+  const uint32_t expected1 = MAX_TIMEOUT;
+  const uint32_t expected2 = 0;
+  TEST_ASSERT_EQUAL_UINT32(expected1, actual1);
+  TEST_ASSERT_EQUAL_UINT32(expected2, actual2);
+}
 
 // TODO krri verify seqNr are increased
 // TODO krri verify we use all anchors
@@ -256,12 +288,32 @@ static void populatePacket(packet_t* packet, uint8_t seqNr, uint8_t type, locoAd
   packet->destAddress = destinationAddress;
 }
 
+static void populateLppPacket(packet_t* packet, char *data, int length, locoAddress_t sourceAddress, locoAddress_t destinationAddress) {
+  memset(packet, 0, sizeof(packet_t));
+
+  MAC80215_PACKET_INIT((*packet), MAC802154_TYPE_DATA);
+  packet->pan = 0xbccf;
+  memcpy(&packet->payload[LPS_TWR_SEND_LPP_PAYLOAD], data, length);
+  packet->payload[LPS_TWR_TYPE] = LPS_TWR_LPP_SHORT;
+  packet->sourceAddress = sourceAddress;
+  packet->destAddress = destinationAddress;
+}
+
 static void mockEventTimeoutHandling(const packet_t* expectedTxPacket) {
   dwIdle_Expect(&dev);
   dwNewTransmit_Expect(&dev);
   dwSetDefaults_Expect(&dev);
   dwSetData_ExpectWithArray(&dev, 1, (uint8_t*)expectedTxPacket, sizeof(packet_t), MAC802154_HEADER_LENGTH + 2);
   dwWaitForResponse_Expect(&dev, true);
+  dwStartTransmit_Expect(&dev);
+}
+
+static void mockSendLppShortHandling(const packet_t* expectedTxPacket, int length) {
+  dwIdle_Expect(&dev);
+  dwNewTransmit_Expect(&dev);
+  dwSetDefaults_Expect(&dev);
+  dwSetData_ExpectWithArray(&dev, 1, (uint8_t*)expectedTxPacket, sizeof(packet_t), MAC802154_HEADER_LENGTH + 1 + length);
+  dwWaitForResponse_Expect(&dev, false);
   dwStartTransmit_Expect(&dev);
 }
 
@@ -282,4 +334,12 @@ static void mockEventPacketReceivedAnswerHandling(int dataLength, const packet_t
 static void mockEventPacketReceivedReportHandling(int dataLength, const packet_t* rxPacket) {
   dwGetDataLength_ExpectAndReturn(&dev, dataLength);
   dwGetData_ExpectAndCopyData(&dev, rxPacket, dataLength);
+}
+
+static bool lpsGetLppShortCallbackForLppShortPacketSent(lpsLppShortPacket_t* shortPacket, int cmock_num_calls) {
+  memcpy(shortPacket->data, lppShortPacketData, lppShortPacketLength);
+  shortPacket->dest = lppShortPacketDest;
+  shortPacket->length = lppShortPacketLength;
+
+  return true;
 }

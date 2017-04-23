@@ -45,7 +45,6 @@
 
 //#define UPDATE_KALMAN_WITH_RANGING // uncomment to push into the kalman
 #ifdef UPDATE_KALMAN_WITH_RANGING
-#define RANGE_OUTLIER_LIMIT 1500 // the measured range is in [mm]
 // Measurement noise model
 static float expPointA = 1.0f;
 static float expStdA = 0.0025f; // STD at elevation expPointA [m]
@@ -55,6 +54,8 @@ static float expCoeff;
 #endif // UPDATE_KALMAN_WITH_RANGING
 #endif // ESTIMATOR_TYPE_kalman
 
+#define RANGE_OUTLIER_LIMIT 3000 // the measured range is in [mm]
+
 static uint8_t devAddr;
 static I2C_Dev *I2Cx;
 static bool isInit;
@@ -63,7 +64,7 @@ static uint16_t io_timeout = 0;
 static bool did_timeout;
 static uint16_t timeout_start_ms;
 
-static uint16_t range_last = 0;
+uint16_t range_last = 0;
 
 // Record the current time to check an upcoming timeout against
 #define startTimeout() (timeout_start_ms = xTaskGetTickCount())
@@ -146,13 +147,13 @@ void vl53l0xInit(DeckInfo* info)
   i2cdevInit(I2C1_DEV);
   I2Cx = I2C1_DEV;
   devAddr = VL53L0X_DEFAULT_ADDRESS;
-  xTaskCreate(vl53l0xTask, "vl53l0x", 2*configMINIMAL_STACK_SIZE, NULL, 3, NULL);
-  
+  xTaskCreate(vl53l0xTask, VL53_TASK_NAME, VL53_TASK_STACKSIZE, NULL, VL53_TASK_PRI, NULL);
+
 #if defined(ESTIMATOR_TYPE_kalman) && defined(UPDATE_KALMAN_WITH_RANGING)
   // pre-compute constant in the measurement noise mdoel
   expCoeff = logf(expStdB / expStdA) / (expPointB - expPointA);
 #endif
-  
+
   isInit = true;
 }
 
@@ -176,7 +177,7 @@ void vl53l0xTask(void* arg)
 
   vl53l0xSetVcselPulsePeriod(VcselPeriodPreRange, 18);
   vl53l0xSetVcselPulsePeriod(VcselPeriodFinalRange, 14);
-  vl53l0xStartContinuous(100);
+  vl53l0xStartContinuous(0);
   while (1) {
     xLastWakeTime = xTaskGetTickCount();
     range_last = vl53l0xReadRangeContinuousMillimeters();
@@ -185,7 +186,7 @@ void vl53l0xTask(void* arg)
     // the sensor should not be able to measure >3 [m], and outliers typically
     // occur as >8 [m] measurements
     if (range_last < RANGE_OUTLIER_LIMIT){
-    
+
       // Form measurement
       tofMeasurement_t tofData;
       tofData.timestamp = xTaskGetTickCount();
@@ -196,6 +197,20 @@ void vl53l0xTask(void* arg)
 #endif
     vTaskDelayUntil(&xLastWakeTime, M2T(measurement_timing_budget_ms));
   }
+}
+
+bool vl53l0xReadRange(zDistance_t* zrange, const uint32_t tick)
+{
+  bool updated = false;
+
+  if (isInit) {
+    if (range_last != 0 && range_last < RANGE_OUTLIER_LIMIT) {
+      zrange->distance = (float)range_last * 0.001f; // Scale from [mm] to [m]
+      zrange->timestamp = tick;
+      updated = true;
+    }
+  }
+  return updated;
 }
 
 /** Verify the I2C connection.
@@ -897,6 +912,11 @@ uint16_t vl53l0xReadRangeContinuousMillimeters(void)
   while ((val & 0x07) == 0)
   {
     i2cdevReadByte(I2Cx, devAddr, VL53L0X_RA_RESULT_INTERRUPT_STATUS, &val);
+    if ((val & 0x07) == 0)
+    {
+      // Relaxation delay when polling interrupt
+      vTaskDelay(M2T(1));
+    }
     if (checkTimeoutExpired())
     {
       did_timeout = true;
@@ -1139,12 +1159,11 @@ bool vl53l0xWriteReg32Bit(uint8_t reg, uint32_t val)
   return i2cdevWrite(I2Cx, devAddr, reg, 4, (uint8_t *)&buffer);
 }
 
-// TODO: Decide on vid:pid and set the used pins
 static const DeckDriver vl53l0x_deck = {
-  .vid = 0, // Changed this from 0
-  .pid = 0, // Changed this from 0
-  .name = "vl53l0x",
-  .usedGpio = 0,
+  .vid = 0xBC,
+  .pid = 0x09,
+  .name = "bcZRanger",
+  .usedGpio = 0x0C,
 
   .init = vl53l0xInit,
   .test = vl53l0xTest,
@@ -1153,6 +1172,5 @@ static const DeckDriver vl53l0x_deck = {
 DECK_DRIVER(vl53l0x_deck);
 
 LOG_GROUP_START(range)
-LOG_ADD(LOG_UINT16, range, &range_last)
+LOG_ADD(LOG_UINT16, zrange, &range_last)
 LOG_GROUP_STOP(range)
-

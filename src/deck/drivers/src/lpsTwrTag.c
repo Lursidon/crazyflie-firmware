@@ -26,6 +26,7 @@
 
 
 #include <string.h>
+#include <math.h>
 
 #include "lpsTwrTag.h"
 
@@ -33,6 +34,7 @@
 #include "task.h"
 
 #include "log.h"
+#include "crtp_localization_service.h"
 
 #include "stabilizer_types.h"
 #ifdef ESTIMATOR_TYPE_kalman
@@ -70,6 +72,9 @@ static volatile uint8_t curr_seq = 0;
 static int current_anchor = 0;
 
 static bool ranging_complete = false;
+static bool lpp_transaction = false;
+
+static lpsLppShortPacket_t lppShortPacket;
 
 static lpsAlgoOptions_t* options;
 
@@ -116,6 +121,24 @@ static uint32_t rxcallback(dwDevice_t *dev) {
     case LPS_TWR_ANSWER:
       if (rxPacket.payload[LPS_TWR_SEQ] != curr_seq) {
         return 0;
+      }
+
+      if (dataLength - MAC802154_HEADER_LENGTH > 3) {
+        if (rxPacket.payload[LPS_TWR_LPP_HEADER] == LPP_HEADER_SHORT_PACKET) {
+          int srcId = -1;
+
+          for (int i=0; i<LOCODECK_NR_OF_ANCHORS; i++) {
+            if (rxPacket.sourceAddress == options->anchorAddress[i]) {
+              srcId = i;
+              break;
+            }
+          }
+
+          if (srcId >= 0) {
+            lpsHandleLppShortPacket(srcId, &rxPacket.payload[LPS_TWR_LPP_TYPE],
+                                    dataLength - MAC802154_HEADER_LENGTH - 3);
+          }
+        }
       }
 
       txPacket.payload[LPS_TWR_TYPE] = LPS_TWR_FINAL;
@@ -168,7 +191,8 @@ static uint32_t rxcallback(dwDevice_t *dev) {
 
       rangingStats[current_anchor].history[rangingStats[current_anchor].ptr] = options->distance[current_anchor];
 
-      if (options->anchorPositionOk && (diff < (OUTLIER_TH*stddev))) {
+      if ((options->combinedAnchorPositionOk || options->anchorPosition[current_anchor].timestamp) &&
+          (diff < (OUTLIER_TH*stddev))) {
         distanceMeasurement_t dist;
         dist.distance = options->distance[current_anchor];
         dist.x = options->anchorPosition[current_anchor].x;
@@ -211,6 +235,24 @@ void initiateRanging(dwDevice_t *dev)
   dwStartTransmit(dev);
 }
 
+void sendLppShort(dwDevice_t *dev, lpsLppShortPacket_t *packet)
+{
+  dwIdle(dev);
+
+  txPacket.payload[LPS_TWR_TYPE] = LPS_TWR_LPP_SHORT;
+  memcpy(&txPacket.payload[LPS_TWR_SEND_LPP_PAYLOAD], packet->data, packet->length);
+
+  txPacket.sourceAddress = options->tagAddress;
+  txPacket.destAddress = options->anchorAddress[packet->dest];
+
+  dwNewTransmit(dev);
+  dwSetDefaults(dev);
+  dwSetData(dev, (uint8_t*)&txPacket, MAC802154_HEADER_LENGTH+1+packet->length);
+
+  dwWaitForResponse(dev, false);
+  dwStartTransmit(dev);
+}
+
 static uint32_t twrTagOnEvent(dwDevice_t *dev, uwbEvent_t event)
 {
   static uint32_t statisticStartTick = 0;
@@ -225,21 +267,27 @@ static uint32_t twrTagOnEvent(dwDevice_t *dev, uwbEvent_t event)
       break;
     case eventPacketSent:
       txcallback(dev);
+
+      if (lpp_transaction) {
+        return 0;
+      }
       return MAX_TIMEOUT;
       break;
     case eventTimeout:  // Comes back to timeout after each ranging attempt
-      if (!ranging_complete) {
+      if (!ranging_complete && !lpp_transaction) {
         options->rangingState &= ~(1<<current_anchor);
         if (options->failedRanging[current_anchor] < options->rangingFailedThreshold) {
           options->failedRanging[current_anchor] ++;
           options->rangingState |= (1<<current_anchor);
         }
 
+        locSrvSendRangeFloat(current_anchor, NAN);
         failedRanging[current_anchor]++;
       } else {
         options->rangingState |= (1<<current_anchor);
         options->failedRanging[current_anchor] = 0;
 
+        locSrvSendRangeFloat(current_anchor, options->distance[current_anchor]);
         succededRanging[current_anchor]++;
       }
 
@@ -261,8 +309,14 @@ static uint32_t twrTagOnEvent(dwDevice_t *dev, uwbEvent_t event)
       }
 
 
-      ranging_complete = false;
-      initiateRanging(dev);
+      if (lpsGetLppShort(&lppShortPacket)) {
+        lpp_transaction = true;
+        sendLppShort(dev, &lppShortPacket);
+      } else {
+        lpp_transaction = false;
+        ranging_complete = false;
+        initiateRanging(dev);
+      }
       return MAX_TIMEOUT;
       break;
     case eventReceiveTimeout:

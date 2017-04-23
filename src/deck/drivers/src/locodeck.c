@@ -39,6 +39,7 @@
 #include "FreeRTOS.h"
 #include "semphr.h"
 #include "task.h"
+#include "queue.h"
 
 #include "deck.h"
 #include "system.h"
@@ -69,7 +70,7 @@
 
 // The anchor position can be set using parameters
 // As an option you can set a static position in this file and set
-// anchorPositionOk to enable sending the anchor rangings to the Kalman filter
+// combinedAnchorPositionOk to enable sending the anchor rangings to the Kalman filter
 
 static lpsAlgoOptions_t algoOptions = {
   .tagAddress = 0xbccf000000000008,
@@ -84,20 +85,26 @@ static lpsAlgoOptions_t algoOptions = {
   .antennaDelay = (ANTENNA_OFFSET*499.2e6*128)/299792458.0, // In radio tick
   .rangingFailedThreshold = 6,
 
-  .anchorPositionOk = false,
+  .combinedAnchorPositionOk = false,
 
   // To set a static anchor position from startup, uncomment and modify the
   // following code:
-  // .anchorPosition = {
-  //   {x: 0.99, y: 1.49, z: 1.80},
-  //   {x: 0.99, y: 3.29, z: 1.80},
-  //   {x: 4.67, y: 2.54, z: 1.80},
-  //   {x: 0.59, y: 2.27, z: 0.20},
-  //   {x: 4.70, y: 3.38, z: 0.20},
-  //   {x: 4.70, y: 1.14, z: 0.20},
-  // },
-  // .anchorPositionOk = true,
+//   .anchorPosition = {
+//     {timestamp: 1, x: 0.99, y: 1.49, z: 1.80},
+//     {timestamp: 1, x: 0.99, y: 3.29, z: 1.80},
+//     {timestamp: 1, x: 4.67, y: 2.54, z: 1.80},
+//     {timestamp: 1, x: 0.59, y: 2.27, z: 0.20},
+//     {timestamp: 1, x: 4.70, y: 3.38, z: 0.20},
+//     {timestamp: 1, x: 4.70, y: 1.14, z: 0.20},
+//   },
+//
+//   .combinedAnchorPositionOk = true,
 };
+
+point_t* locodeckGetAnchorPosition(uint8_t anchor)
+{
+  return &algoOptions.anchorPosition[anchor];
+}
 
 #if LPS_TDOA_ENABLE
 static uwbAlgorithm_t *algorithm = &uwbTdoaTagAlgorithm;
@@ -110,6 +117,8 @@ static xSemaphoreHandle spiSemaphore;
 static SemaphoreHandle_t irqSemaphore;
 static dwDevice_t dwm_device;
 static dwDevice_t *dwm = &dwm_device;
+
+static QueueHandle_t lppShortQueue;
 
 static uint32_t timeout;
 
@@ -134,6 +143,8 @@ static void rxTimeoutCallback(dwDevice_t * dev) {
 
 static void uwbTask(void* parameters)
 {
+  lppShortQueue = xQueueCreate(10, sizeof(lpsLppShortPacket_t));
+
   systemWaitStart();
 
   algorithm->init(dwm, &algoOptions);
@@ -147,6 +158,28 @@ static void uwbTask(void* parameters)
       timeout = algorithm->onEvent(dwm, eventTimeout);
     }
   }
+}
+
+static lpsLppShortPacket_t lppShortPacket;
+
+bool lpsSendLppShort(uint8_t destId, void* data, size_t length)
+{
+  bool result = false;
+
+  if (isInit)
+  {
+    lppShortPacket.dest = destId;
+    lppShortPacket.length = length;
+    memcpy(lppShortPacket.data, data, length);
+    result = xQueueSend(lppShortQueue, &lppShortPacket,0) == pdPASS;
+  }
+
+  return result;
+}
+
+bool lpsGetLppShort(lpsLppShortPacket_t* shortPacket)
+{
+  return xQueueReceive(lppShortQueue, shortPacket, 0) == pdPASS;
 }
 
 static uint8_t spiTxBuffer[196];
@@ -287,6 +320,7 @@ static void dwm1000Init(DeckInfo *info)
   dwSetDefaults(dwm);
   dwEnableMode(dwm, MODE_SHORTDATA_FAST_ACCURACY);
   dwSetChannel(dwm, CHANNEL_2);
+  dwUseSmartPower(dwm, true);
   dwSetPreambleCode(dwm, PREAMBLE_CODE_64MHZ_9);
 
   dwSetReceiveWaitTimeout(dwm, RX_TIMEOUT);
@@ -423,5 +457,23 @@ PARAM_ADD(PARAM_FLOAT, anchor7x, &algoOptions.anchorPosition[7].x)
 PARAM_ADD(PARAM_FLOAT, anchor7y, &algoOptions.anchorPosition[7].y)
 PARAM_ADD(PARAM_FLOAT, anchor7z, &algoOptions.anchorPosition[7].z)
 #endif
-PARAM_ADD(PARAM_UINT8, enable, &algoOptions.anchorPositionOk)
+PARAM_ADD(PARAM_UINT8, enable, &algoOptions.combinedAnchorPositionOk)
 PARAM_GROUP_STOP(anchorpos)
+
+
+// Loco Posisioning Protocol (LPP) handling
+
+void lpsHandleLppShortPacket(uint8_t srcId, uint8_t *data, int length)
+{
+  uint8_t type = data[0];
+
+  if (type == LPP_SHORT_ANCHORPOS) {
+    if (srcId < LOCODECK_NR_OF_ANCHORS) {
+      struct lppShortAnchorPos_s *newpos = (struct lppShortAnchorPos_s*)&data[1];
+      algoOptions.anchorPosition[srcId].timestamp = xTaskGetTickCount();
+      algoOptions.anchorPosition[srcId].x = newpos->x;
+      algoOptions.anchorPosition[srcId].y = newpos->y;
+      algoOptions.anchorPosition[srcId].z = newpos->z;
+    }
+  }
+}
