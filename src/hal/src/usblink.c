@@ -82,7 +82,7 @@ static int usblinkReceiveCRTPPacket(CRTPPacket *p)
 {
   if (xQueueReceive(crtpPacketDelivery, p, M2T(100)) == pdTRUE)
   {
-    ledseqRun(LINK_LED, seq_linkup);
+    //ledseqRun(LINK_LED, seq_linkup);
     return 0;
   }
 

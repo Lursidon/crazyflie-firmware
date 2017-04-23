@@ -129,18 +129,18 @@ void radiolinkSyslinkDispatch(SyslinkPacket *slp)
   {
     slp->length--; // Decrease to get CRTP size.
     xQueueSend(crtpPacketDelivery, &slp->length, 0);
-    ledseqRun(LINK_LED, seq_linkup);
+    //ledseqRun(LINK_LED, seq_linkup);
     // If a radio packet is received, one can be sent
     if (xQueueReceive(txQueue, &txPacket, 0) == pdTRUE)
     {
-      ledseqRun(LINK_DOWN_LED, seq_linkup);
+      //ledseqRun(LINK_DOWN_LED, seq_linkup);
       syslinkSendPacket(&txPacket);
     }
   } else if (slp->type == SYSLINK_RADIO_RAW_BROADCAST)
   {
     slp->length--; // Decrease to get CRTP size.
     xQueueSend(crtpPacketDelivery, &slp->length, 0);
-    ledseqRun(LINK_LED, seq_linkup);
+    //ledseqRun(LINK_LED, seq_linkup);
     // no ack for broadcasts
   } else if (slp->type == SYSLINK_RADIO_RSSI)
 	{
@@ -184,6 +184,7 @@ struct crtpLinkOperations * radiolinkGetLink()
 
 static int radiolinkSetEnable(bool enable)
 {
+	//ledseqRun(LINK_LED, seq_linkup);
   return 0;
 }
 

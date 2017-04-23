@@ -35,6 +35,8 @@
 
 #include "config.h"
 
+#include "ledseq.h"
+
 #include "crtp.h"
 #include "info.h"
 #include "cfassert.h"
@@ -223,7 +225,7 @@ bool crtpIsConnected(void)
   return true;
 }
 
-void crtpSetLink(struct crtpLinkOperations * lk)
+void crtpSetLink(struct crtpLinkOperations *lk)
 {
   if(link)
     link->setEnable(false);
@@ -239,4 +241,8 @@ void crtpSetLink(struct crtpLinkOperations * lk)
 static int nopFunc(void)
 {
   return ENETDOWN;
+}
+
+void crtpGetLink(struct crtpLinkOperations *lk){
+	lk = link;
 }

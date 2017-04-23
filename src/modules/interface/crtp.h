@@ -44,6 +44,7 @@ typedef enum {
   CRTP_PORT_LOG              = 0x05,
   CRTP_PORT_POSITION         = 0x06,
   CRTP_PORT_SETPOINT_GENERIC = 0x07,
+  CRTP_PORT_GCM				 = 0x0B,
   CRTP_PORT_PLATFORM         = 0x0D,
   CRTP_PORT_LINK             = 0x0F,
 } CRTPPort;
@@ -186,4 +187,6 @@ bool crtpIsConnected(void);
  */
 int crtpReset(void);
 
+
+void crtpGetLink(struct crtpLinkOperations * lk);
 #endif /*CRTP_H_*/

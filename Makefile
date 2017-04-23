@@ -75,6 +75,48 @@ LINKER_DIR = tools/make/F405/linker
 ST_OBJ_DIR  = tools/make/F405
 endif
 
+#WOLFSSL = src/lib/WolfSSL
+WOLFSSLDEFINES = -DNO_WRITEV -DNO_FILESYSTEM -DNO_DEV_RANDOM -DWOLFSSL_USER_IO -DSINGLE_THREADED -DNO_INLINE
+
+WOLFSSLDEFINES += -DNO_WOLFSSL_CLIENT -DNO_WOLFSSL_SERVER -DNO_DES3 -DNO_DSA -DNO_HMAC -DNO_MD4
+WOLFSSLDEFINES += -DNO_MD5 -DNO_PWDBASED -DNO_RC4 -DNO_SESSION_CACHE
+WOLFSSLDEFINES += -DNO_TLS -DNOWC_NO_RSA_OAEP -DNO_OLD_TLS
+WOLFSSLDEFINES += -DNO_ERROR_STRINGS -DNO_WOLFSSL_MEMORY -DNO_DH -DNO_CODING
+WOLFSSLDEFINES += -DNO_HC128 -DNO_SHA -DNO_RABBIT -DWOLFCRYPT_ONLY
+
+
+WOLFSSLDEFINES += -DHAVE_AESGCM -DHAVE_ECC -DRSA_LOW_MEM -DUSE_FAST_MATH
+#add aes.c and aes.h
+#thigns to define
+#
+#definitions for porting
+#SIZEOF_LONG define in code?
+#SIZEOF_LONG_LONG define in code?
+#little endian -- nothing to do
+#NO_WRITEV -- 
+#WOLFSSL_USER_IO -- SEE WHAT I HAVE TO DO THOUGH -/
+#NO_FILESYSTEM
+#NO_DEV_RANDOM -- ADD SUPPORT FOR TRUERANDOM FROM HARDWARE
+#CUSTOM ATOMIC RECORD LAYER PROCESSING
+#
+#removing features
+#NO_WOLFSSL_CLIENT
+#NO_DES3
+#NO_DSA
+#NO_HMAC
+#NO_MD4
+#NO_MD5
+#NO_SHA256
+#NO_PWDBASED
+#NO_RC4
+#NO_SESSION_CACHE
+#NO_TLS
+#NOWC_NO_RSA_OAEP
+# NO_OLD_TLS for the sake of weird stuff
+#
+#enabling features
+#HAVE_AESGCM
+
 LIB = src/lib
 
 ################ Build configuration ##################
@@ -88,6 +130,13 @@ VPATH_CF2 += $(LIB)/STM32_USB_Device_Library/Core/src
 VPATH_CF2 += $(LIB)/STM32_USB_OTG_Driver/src
 VPATH_CF2 += src/deck/api src/deck/core src/deck/drivers/src src/deck/drivers/src/test
 CRT0_CF2 = startup_stm32f40xx.o system_stm32f4xx.o
+
+# WolfSSL
+VPATH += $(LIB)/WolfSSL/wolfssl
+VPATH += $(LIB)/WolfSSL/wolfssl/wolfcrypt
+VPATH += $(LIB)/WolfSSL/wolfcrypt/src
+VPATH += $(LIB)/WolfSSL/src
+#VPATH += $(LIB)/WolfSSL
 
 # Should maybe be in separate file?
 -include $(ST_OBJ_DIR)/st_obj.mk
@@ -129,7 +178,6 @@ ifeq ($(PLATFORM), CF2)
 VPATH +=$(VPATH_CF2)
 endif
 
-
 ############### Source files configuration ################
 
 # Init
@@ -154,6 +202,7 @@ PROJ_OBJ_CF2 += usb_bsp.o usblink.o usbd_desc.o usb.o
 PROJ_OBJ += crtp.o ledseq.o freeRTOSdebug.o buzzer.o
 PROJ_OBJ_CF1 += imu_cf1.o pm_f103.o nrf24link.o ow_none.o uart_cf1.o
 PROJ_OBJ_CF2 +=  pm_f405.o syslink.o radiolink.o ow_syslink.o proximity.o usec_time.o
+PROJ_OBJ_CF2 += aeslink.o
 
 PROJ_OBJ_CF2 +=  sensors_$(SENSORS).o
 # libdw
@@ -161,6 +210,7 @@ PROJ_OBJ_CF2 += libdw1000.o libdw1000Spi.o
 
 # Modules
 PROJ_OBJ += system.o comm.o console.o pid.o crtpservice.o param.o mem.o
+PROJ_OBJ += rng_interface.o #crtpservice2.o
 PROJ_OBJ += log.o worker.o trigger.o sitaw.o queuemonitor.o msp.o
 PROJ_OBJ_CF1 += sound_cf1.o sensors_cf1.o
 PROJ_OBJ_CF2 += platformservice.o sound_cf2.o extrx.o sysload.o
@@ -218,6 +268,28 @@ PROJ_OBJ_CF2 += configblockeeprom.o
 # Libs
 PROJ_OBJ_CF2 += libarm_math.a
 
+# Wolfssl 
+#PROJ_OBJ += aes.o ssl.o #internal.o error-ssl.o coding.o dirent.o stat.o asn.o dh.o
+#PROJ_OBJ += -l$(WOLFSSL)/src #-l$(WOLFSSL)/wolfssl -l$(WOLFSSL)/wolfssl/wolfcrypt
+#PROJ_OBJ += -l$(WOLFSSL)/wolfcrypt/src
+# removed ones
+# crl.o internal.o io.o keys.o ocsp.o sniffer.o ssl.o tls.o
+PROJ_OBJ += ssl.o aes.o #WolfSSL/src
+PROJ_OBJ += arc4.o asm.o asn.o async.o blake2b.o camellia.o chacha.o
+PROJ_OBJ += chacha20_poly1305.o cmac.o coding.o compress.o curve25519.o
+PROJ_OBJ += des3.o dh.o dsa.o ecc_fp.o ecc.o ed25519.o error.o fe_low_mem.o fe_operations.o
+PROJ_OBJ += ge_low_mem.o ge_operations.o hash.o hc128.o hmac.o idea.o 
+
+PROJ_OBJ += crl.o
+
+PROJ_OBJ += logging.o md2.o
+PROJ_OBJ += md4.o md5.o memory.o misc.o pkcs12.o pkcs7.o poly1305.o pwdbased.o
+PROJ_OBJ += rabbit.o random.o ripemd.o rsa.o sha.o sha256.o sha512.o signature.o srp.o
+PROJ_OBJ += tfm.o wc_encrypt.o wc_port.o wolfevent.o
+
+PROJ_OBJ += io.o ocsp.o sniffer.o tls.o keys.o internal.o integer.o
+
+
 OBJ = $(FREERTOS_OBJ) $(PORT_OBJ) $(ST_OBJ) $(PROJ_OBJ)
 ifeq ($(PLATFORM), CF1)
 OBJ += $(CRT0_CF1) $(ST_OBJ_CF1) $(PROJ_OBJ_CF1)
@@ -253,6 +325,11 @@ INCLUDES_CF2 += -I$(LIB)/STM32_USB_OTG_Driver/inc
 INCLUDES_CF2 += -Isrc/deck/interface -Isrc/deck/drivers/interface
 INCLUDES_CF2 += -Ivendor/libdw1000/inc
 INCLUDES_CF2 += -I$(LIB)/FatFS
+INCLUDES_CF2 += -I$(LIB)/WolfSSL
+INCLUDES_CF2 += -I$(LIB)/WolfSSL/src
+INCLUDES_CF2 += -I$(LIB)/WolfSSL/wolfssl/
+INCLUDES_CF2 += -I$(LIB)/WolfSSL/wolfssl/wolfcrypt
+INCLUDES_CF2 += -I$(LIB)/WolfSSL/wolfcrypt/src
 
 ifeq ($(USE_FPU), 1)
 	PROCESSOR = -mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16
@@ -287,7 +364,7 @@ endif
 
 CFLAGS += -DBOARD_REV_$(REV) -DESTIMATOR_TYPE_$(ESTIMATOR) -DCONTROLLER_TYPE_$(CONTROLLER) -DPOWER_DISTRIBUTION_TYPE_$(POWER_DISTRIBUTION)
 
-CFLAGS += $(PROCESSOR) $(INCLUDES) $(STFLAGS)
+CFLAGS += $(PROCESSOR) $(INCLUDES) $(STFLAGS) $(WOLFSSLDEFINES)
 ifeq ($(PLATFORM), CF1)
 CFLAGS += $(INCLUDES_CF1) $(STFLAGS_CF1)
 endif

@@ -32,6 +32,7 @@
 #include "crtp.h"
 #include "console.h"
 #include "crtpservice.h"
+#include "crtpservice2.h"
 #include "param.h"
 #include "log.h"
 #include "eskylink.h"
@@ -42,10 +43,16 @@
 #include "platformservice.h"
 #include "syslink.h"
 
+#include "ledseq.h"
+#include "led.h"
+
+#include "aeslink.h"
+
 static bool isInit;
 
 void commInit(void)
 {
+
   if (isInit)
     return;
 #ifdef PLATFORM_CF1
@@ -72,7 +79,10 @@ void commInit(void)
   crtpSetLink(nrf24linkGetLink());
 #endif
 
+
   crtpserviceInit();
+  //crtpservice2Init();
+
 #ifdef PLATFORM_CF2
   platformserviceInit();
 #endif
@@ -85,7 +95,8 @@ void commInit(void)
   //  crtpSetLink(usbGetLink);
   //else if(radiolinkTest())
   //  crtpSetLink(radiolinkGetLink());
-  
+  //ledseqRun(LINK_LED, seq_bootloader);
+  aesEnableTunnel();
   isInit = true;
 }
 

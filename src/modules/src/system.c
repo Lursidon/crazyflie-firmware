@@ -203,7 +203,8 @@ void systemTask(void *arg)
     systemStart();
     soundSetEffect(SND_STARTUP);
     ledseqRun(SYS_LED, seq_alive);
-    ledseqRun(LINK_LED, seq_testPassed);
+    //ledseqRun(LINK_LED, seq_testPassed);
+    //ledseqRun(LINK_LED, seq_bootloader);
   }
   else
   {
