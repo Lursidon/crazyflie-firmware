@@ -127,12 +127,8 @@
 #define PROXIMITY_TASK_NAME     "PROXIMITY"
 #define EXTRX_TASK_NAME         "EXTRX"
 #define UART_RX_TASK_NAME       "UART"
-<<<<<<< HEAD
 #define AESLINK_TASK_NAME   	"AESLINK"
-
-=======
 #define VL53_TASK_NAME          "VL53"
->>>>>>> refs/remotes/bitcraze/master
 
 //Task stack sizes
 #define SYSTEM_TASK_STACKSIZE         (2* configMINIMAL_STACK_SIZE)
@@ -153,11 +149,8 @@
 #define PROXIMITY_TASK_STACKSIZE      configMINIMAL_STACK_SIZE
 #define EXTRX_TASK_STACKSIZE          configMINIMAL_STACK_SIZE
 #define UART_RX_TASK_STACKSIZE        configMINIMAL_STACK_SIZE
-<<<<<<< HEAD
 #define AESLINK_TASK_STACKSIZE        configMINIMAL_STACK_SIZE//do i need to change the task stack size? idk
-=======
 #define VL53_TASK_STACKSIZE           (2 * configMINIMAL_STACK_SIZE)
->>>>>>> refs/remotes/bitcraze/master
 
 //The radio channel. From 0 to 125
 #define RADIO_CHANNEL 80
