@@ -100,10 +100,11 @@ static void aeslinkTask(void *param){
 	      if (!link->receivePacket(&p))
 	      {
 	    	  byte datalength = 0;
-	    	  if((p.data[0] & PID_NBR_MASK) != recPid){//this should always be done
+
+	    	  if(((p.data[0] & PID_NBR_MASK) != recPid) && ((p.data[0] & PACKET_DATA_LENGTH_MASK) > 0)){
 
 	    		  datalength = ((p.data[0] & PACKET_DATA_LENGTH_MASK)>21)?
-	    				  21:p.data[0] & PACKET_DATA_LENGTH_MASK;//crash if packet length is 0
+	    				  21:p.data[0] & PACKET_DATA_LENGTH_MASK;
 
 	    		  recAuthData[0] = p.header;
 	    		  recAuthData[1] = p.data[0];
