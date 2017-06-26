@@ -6,10 +6,13 @@
 #include <stdbool.h>
 #include "syslink.h"
 
+struct crtpLinkOperations aeslinkOp;
+
 void aeslinkInit();
 bool aeslinkTest();
 void aesEnableTunnel();
+struct crtpLinkOperations * aeslinkGetLink();
 
 
-struct crtpLinkOperations aeslinkGetLink();
+//struct crtpLinkOperations aeslinkGetLink();
 #endif //__AES_H__

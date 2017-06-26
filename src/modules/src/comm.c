@@ -98,7 +98,7 @@ void commInit(void)
   //else if(radiolinkTest())
   //  crtpSetLink(radiolinkGetLink());
   //ledseqRun(LINK_LED, seq_bootloader);
-  aesEnableTunnel();
+  //aesEnableTunnel();
   isInit = true;
 }
 

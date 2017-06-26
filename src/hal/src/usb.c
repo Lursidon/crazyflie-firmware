@@ -40,6 +40,8 @@
 #include "radiolink.h"
 #include "usb.h"
 
+#include "aeslink.h"
+
 #include "usbd_usr.h"
 #include "usb_conf.h"
 #include "usbd_desc.h"
@@ -148,6 +150,7 @@ static uint8_t usbd_cf_Setup(void *pdev , USB_SETUP_REQ  *req)
     crtpSetLink(usblinkGetLink());
   } else {
     crtpSetLink(radiolinkGetLink());
+    //aesEnableTunnel();
   }
 
   return USBD_OK;

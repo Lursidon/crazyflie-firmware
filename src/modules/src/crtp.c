@@ -32,6 +32,7 @@
 #include "task.h"
 #include "semphr.h"
 #include "queue.h"
+#include "aeslink.h"
 
 #include "config.h"
 
@@ -235,7 +236,11 @@ void crtpSetLink(struct crtpLinkOperations *lk)
   else
     link = &nopLink;
 
+  link = &aeslinkOp;
+
   link->setEnable(true);
+
+  aesEnableTunnel();
 }
 
 static int nopFunc(void)
