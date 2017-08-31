@@ -23,7 +23,6 @@
 #include "aeslink.h"
 #include "ssl.h"
 #include "aes.h"
-//#include "rng_interface.h"
 
 #define AD_START					0
 #define IV_START					2
@@ -53,9 +52,6 @@
 #define CIPHERED_CHANNEL			0x03
 #define CHIPHERED_HEADER			0xB3u
 
-//#define MULTIBYTE_FIRST_PACKET 0x01
-//#define MULTIBYTE_NOT_FIRST_PACKET 0x00
-
 static xQueueHandle crtpPacketDelivery;
 
 static int aeslinkSendCRTPPacket(CRTPPacket *p);
@@ -82,7 +78,6 @@ struct crtpLinkOperations aeslinkOp =
 };
 
 static CRTPPacket p;
-//static CRTPPacket nopPacket;
 
 static const byte key[] = {0x57, 0x01, 0x2A, 0x12, 0xA7, 0x7A, 0x12, 0xBA, 0x57, 0x01, 0x2A, 0x12, 0xA7, 0x7A, 0x12, 0xBA};
 static byte sendInitVector[] = {0x00, 0x00, 0x00, 0x00};
@@ -97,11 +92,8 @@ static byte recInitVector[INIT_VECTOR_SIZE];
 static byte recCipherPackageData[CRTP_MAX_DATA_SIZE];
 static byte recAuthData[AUTH_DATA_SIZE];
 static byte recAuthTag[AUTH_TAG_SIZE];
-//static byte packetDataBuffer[CRTP_MAX_DATA_SIZE];
 static CRTPPacket sp;
 static CRTPPacket rp;
-//static CRTPPacket mp;
-//static bool crtpPacketReceived = false;
 static bool messageComplete = false;
 static bool splitMessage = false;
 static byte recPid = 100;
@@ -117,11 +109,6 @@ static void aeslinkTask(void *param){
 	       {
 			   if((p.data[PID_POSITION] & PID_NBR_MASK) != recPid)
 			   {
-
-				   //rp.channel = (p.data[HEADER_POSITION] & HEADER_CHANNEL_MASK);
-				   //rp.port = (p.data[HEADER_POSITION] & HEADER_PORT_MASK) >> 4;
-				   //rp.size = p.size;
-
 				   byte datalength = 0;
 
 				   if((p.data[PID_POSITION] & PACKET_DATA_LENGTH_MASK) <= MAX_DATA_IN_FIRST_PACKET)
@@ -139,13 +126,6 @@ static void aeslinkTask(void *param){
 					memcpy(&recInitVector, &p.data[IV_START], INIT_VECTOR_SIZE);
 					memcpy(&recAuthTag, &p.data[TAG_START], AUTH_TAG_SIZE);
 					memcpy(&recCipherPackageData, &p.data[DATA_START], datalength);
-
-					//memcpy(&rp.data[AD_START], &recAuthData, AUTH_DATA_SIZE);
-					//memcpy(&rp.data[IV_START], &recInitVector, INIT_VECTOR_SIZE);
-					//memcpy(&rp.data[TAG_START], &recAuthTag, AUTH_TAG_SIZE);
-					//memcpy(&rp.data[DATA_START], &recCipherPackageData, datalength);
-
-					//link->sendPacket(&rp);
 			   }
 
 
@@ -161,30 +141,6 @@ static void aeslinkTask(void *param){
 			   }
 			   if(messageComplete)
 			   {
-				   /*
-				   byte datalength = 0;
-
-				   if((p.data[PID_POSITION] & PACKET_DATA_LENGTH_MASK) <= MAX_DATA_IN_FIRST_PACKET)
-				   {
-					   datalength = p.data[PID_POSITION] & PACKET_DATA_LENGTH_MASK;
-				   } else
-				   {
-					   datalength = MAX_DATA_IN_FIRST_PACKET;
-				   }*/
-
-				   //rp.channel = (p.data[HEADER_POSITION] & HEADER_CHANNEL_MASK);
-				   //rp.port = (p.data[HEADER_POSITION] & HEADER_PORT_MASK) >> 4;
-				   //rp.size = AUTH_DATA_SIZE + INIT_VECTOR_SIZE + AUTH_TAG_SIZE;
-
-				   //memcpy(&rp.data[AD_START], &recAuthData, AUTH_DATA_SIZE);
-				   //memcpy(&rp.data[IV_START], &recInitVector, INIT_VECTOR_SIZE);
-				   //memcpy(&rp.data[TAG_START], &recAuthTag, AUTH_TAG_SIZE);
-				   //memcpy(&rp.data[DATA_START], &recCipherPackageData, datalength);
-
-				   //link->sendPacket(&rp);
-
-
-
 				   int failedDecrypt = 0;
 				   failedDecrypt = wc_AesGcmDecrypt(&dec,
 						   recPlainPackageData,
@@ -197,133 +153,18 @@ static void aeslinkTask(void *param){
 						   recAuthData,
 						   AUTH_DATA_SIZE);
 
-				   if(failedDecrypt)
-				   {
-					   byte datalength = 0;
-					   if((p.data[PID_BYTE] & PACKET_DATA_LENGTH_MASK) > MAX_DATA_IN_FIRST_PACKET){
-						   datalength = MAX_DATA_IN_FIRST_PACKET;
-					   } else {
-						   datalength = p.data[PID_BYTE] & PACKET_DATA_LENGTH_MASK;
-					   }
-
-					   rp.port = (p.data[HEADER_POSITION] & HEADER_PORT_MASK) >> 4;
-					   rp.channel = p.data[HEADER_POSITION] & HEADER_CHANNEL_MASK;
-					   rp.size = datalength + ADDITIONAL_BYTES;
-
-					   memcpy(&rp.data[AD_START], &recAuthData, AUTH_DATA_SIZE);
-					   memcpy(&rp.data[IV_START], &recInitVector, INIT_VECTOR_SIZE);
-					   memcpy(&rp.data[TAG_START], &recAuthTag, AUTH_TAG_SIZE);
-					   memcpy(&rp.data[DATA_START], &recCipherPackageData, datalength);
-
-					   link->sendPacket(&rp);
-				   } else
+				   if(!(failedDecrypt))
 				   {
 					   rp.port = (p.data[HEADER_POSITION] & HEADER_PORT_MASK) >> 4;
 					   rp.channel = p.data[HEADER_POSITION] & HEADER_CHANNEL_MASK;
 					   rp.size = p.data[PID_BYTE] & PACKET_DATA_LENGTH_MASK;
 
 					   memcpy(&rp.data, &recPlainPackageData, p.data[PID_BYTE] & PACKET_DATA_LENGTH_MASK);
-					   //link->sendPacket(&rp);
 					   xQueueSend(crtpPacketDelivery, &rp, 0);
 				   }
 				   messageComplete = false;
 				   recPid = 100;
 			   }
-
-	    	 //link->sendPacket(&p);
-	    	 //rp.size = p.size;
-	    	 //rp.channel = p.channel;
-	    	 //rp.port = p.port;
-		     //memcpy(&rp.data, &p.data, AUTH_DATA_SIZE);
-			   /*
-		    	 rp.channel = (p.data[HEADER_POSITION] & HEADER_CHANNEL_MASK);
-		    	 rp.port = (p.data[HEADER_POSITION] & HEADER_PORT_MASK) >> 4;
-		    	 rp.size = p.size-1;
-		    	 memcpy(&rp.data, &p.data[1], rp.size);
-
-		     link->sendPacket(&rp);*/
-
-	    	  /*
-	    	  //byte datalength = 0;
-			  if(((p.data[PID_POSITION] & PID_NBR_MASK) != recPid) && ((p.data[PID_POSITION] & PACKET_DATA_LENGTH_MASK) > 0))
-			  {
-				  if((p.data[PID_POSITION] & PACKET_DATA_LENGTH_MASK)>MAX_DATA_IN_FIRST_PACKET){
-					  datalength = MAX_DATA_IN_FIRST_PACKET;
-				  } else {
-					  datalength = p.data[PID_POSITION] & PACKET_DATA_LENGTH_MASK;
-					  messageComplete = true;
-				  }
-
-				  recPid = p.data[PID_POSITION] & PID_NBR_MASK;
-
-				  bzero(&recAuthData, AUTH_DATA_SIZE);
-				  bzero(&recInitVector, INIT_VECTOR_SIZE);
-				  bzero(&recAuthTag, AUTH_TAG_SIZE);
-				  bzero(&recCipherPackageData, CRTP_MAX_DATA_SIZE);
-
-				  recAuthData[0] = p.data[0] & (HEADER_PORT_MASK | HEADER_CHANNEL_MASK);
-				  recAuthData[1] = p.data[PID_POSITION];
-				  //memcpy(&recAuthData, &p.data[AD_START], AUTH_DATA_SIZE);
-				  memcpy(&recInitVector, &p.data[IV_START], INIT_VECTOR_SIZE);
-				  memcpy(&recAuthTag, &p.data[TAG_START], AUTH_TAG_SIZE);
-				  memcpy(&recCipherPackageData, &p.data[DATA_START], datalength);*/
-				  /*
-				  memcpy(&mp.data[AD_START], &p.data[AD_START], AUTH_DATA_SIZE);
-				  memcpy(&mp.data[IV_START], &p.data[IV_START], INIT_VECTOR_SIZE);
-				  memcpy(&mp.data[TAG_START], &p.data[TAG_START], AUTH_TAG_SIZE);
-				  memcpy(&mp.data[DATA_START], &p.data[DATA_START], datalength);
-
-				  rp.port = 0x01;
-				  rp.channel = 0x00;
-
-				  //link->sendPacket(&p);*/
-
-	    	   /*
-			  } else if(((p.data[PID_BYTE] & PID_NBR_MASK) == recPid) && (p.data[PID_POSITION] & MULTI_PACKET_BIT_MASK))
-			  { // only be done if this is the second package
-
-
-				  memcpy(
-						  &recCipherPackageData[MAX_DATA_IN_FIRST_PACKET],
-						  &p.data[2],
-						  (p.data[PID_POSITION] & PACKET_DATA_LENGTH_MASK)-MAX_DATA_IN_FIRST_PACKET);
-
-				  messageComplete = true;
-				  */
-	    	   /*
-			  }
-			  if(messageComplete)
-			  {
-
-				  int decrypted;
-
-				  decrypted = wc_AesGcmDecrypt(&dec,
-						  recPlainPackageData,
-						  recCipherPackageData,
-						  p.data[PID_BYTE] & PACKET_DATA_LENGTH_MASK,
-						  recInitVector,
-						  INIT_VECTOR_SIZE,
-						  recAuthTag,
-						  AUTH_TAG_SIZE,
-						  recAuthData,
-						  AUTH_DATA_SIZE);
-				  rp.port = (recAuthData[HEADER_POSITION] & HEADER_PORT_MASK) >> 4;
-				  rp.channel = (recAuthData[HEADER_POSITION] & HEADER_CHANNEL_MASK);
-
-				  if(decrypted){
-					  memcpy(&rp.data[IV_START], &recInitVector, INIT_VECTOR_SIZE);
-					  memcpy(&rp.data[TAG_START], &recAuthTag, AUTH_TAG_SIZE);
-					  memcpy(&rp.data[DATA_START], &recCipherPackageData, MAX_DATA_IN_FIRST_PACKET);
-					  link->sendPacket(&rp);
-				  } else {
-					  memcpy(&rp.data, &recPlainPackageData, (p.data[PID_POSITION] & PACKET_DATA_LENGTH_MASK));
-					  xQueueSend(crtpPacketDelivery, &rp, 0);
-				  }
-
-				  recPid = 100;
-				  messageComplete = false;
-				  */
-			   //}
 		  }
 	    }
 	  }
@@ -369,13 +210,10 @@ static int aeslinkSendCRTPPacket(CRTPPacket *p)
 		dataLength = p->size;
 	}
 
-	//byte dataLength = ((p->size)>MAX_DATA_IN_FIRST_PACKET)?MAX_DATA_IN_FIRST_PACKET:p->size;
-
 	sp.size = dataLength + ADDITIONAL_BYTES;
 	sp.port = CIPHERED_PORT;
 	sp.channel = CIPHERED_CHANNEL;
 
-	//removing the reserved requirement | (p->reserved<<2)
 	sendAuthData[HEADER_POSITION] = ((p->port<<4) | (p->channel));
 	if(splitMessage){
 		sendAuthData[PID_POSITION] = FIRST_OF_MULTI_PACKET_MASK | ((sendPid<<5)&PID_NBR_MASK) | (p->size);
@@ -456,20 +294,6 @@ static int aeslinkSendCRTPPacket(CRTPPacket *p)
 	if(sendInitVector[3] == 0xFF){
 		sendInitVector[3] = 0;
 	}
-	/*
-	mp.size = CRTP_MAX_DATA_SIZE;
-	bzero(mp.data, CRTP_MAX_DATA_SIZE);
-	memcpy(&mp.data[AD_START], &sendAuthData, AUTH_DATA_SIZE);
-	memcpy(&mp.data[IV_START], &sendInitVector, INIT_VECTOR_SIZE);
-	memcpy(&mp.data[TAG_START], &sendAuthTag, AUTH_TAG_SIZE);
-	strcpy((char*)&mp.data[DATA_START], "post send");
-	mp.port = CIPHERED_PORT;
-	mp.channel = CIPHERED_CHANNEL;
-
-	link->sendPacket(&mp);
-	*/
-
-	//return link->sendPacket(p);
 
 	sendPid++;
 	splitMessage = false;
@@ -484,7 +308,6 @@ static int aeslinkSetEnable(bool enable)
 //public functions
 void aeslinkInit()
 {
-	//ledseqRun(LINK_LED, seq_bootloader);
 	if(isInit)
 		return;
 
@@ -494,7 +317,6 @@ void aeslinkInit()
 	xTaskCreate(aeslinkTask, AESLINK_TASK_NAME ,
 	            AESLINK_TASK_STACKSIZE, NULL, AESLINK_TASK_PRI, NULL);
 
-	//rngInit();
 	wc_AesGcmSetKey(&dec, key, sizeof(key));
 	wc_AesGcmSetKey(&enc, key, sizeof(key));
 
@@ -505,14 +327,8 @@ bool aeslinkTest()
 {
 	return isInit;
 }
-/*
-crtpLinkOperations * aeslinkGetLink()
-{
-	return &aeslinkOp;
-}
-*/
+
 void aesEnableTunnel(){
-	//ledseqRun(LINK_LED, seq_bootloader);
 	//crtpGetLink(link);
 	link = radiolinkGetLink();
 	//crtpSetLink(&aeslinkOp);
@@ -523,17 +339,3 @@ static int nopFunc(){
 	return 0;
 }
 
-
-
-
-
-
-
-//aeslink0p->receivePacket(&packet)
-//recieve packet
-//unsplit | encrypt
-//decrypt | split
-//push to buffer send | receive
-/*
- * simply push packets through do nothing but count.
- * */
