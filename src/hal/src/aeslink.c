@@ -236,27 +236,6 @@ static int aeslinkSendCRTPPacket(CRTPPacket *p)
 				sendAuthData,
 				AUTH_DATA_SIZE);
 	if(failedEncrypt){
-
-		sp.size = CRTP_MAX_DATA_SIZE;
-		bzero(sp.data, CRTP_MAX_DATA_SIZE);
-		memcpy(&sp.data[AD_START], &sendAuthData, AUTH_DATA_SIZE);
-		memcpy(&sp.data[IV_START], &sendInitVector, INIT_VECTOR_SIZE);
-		memcpy(&sp.data[TAG_START], &sendAuthTag, AUTH_TAG_SIZE);
-		strcpy((char*)&sp.data[DATA_START], "fail enc");
-		sp.port = CIPHERED_PORT;
-		sp.channel = CIPHERED_CHANNEL;
-
-		link->sendPacket(&sp);
-
-		sp.size = CRTP_MAX_DATA_SIZE;
-		  bzero(&sp.data, CRTP_MAX_DATA_SIZE);
-		  memcpy(&sp.data, &sendPlainPackageData, p->size);
-		  sp.port = CIPHERED_PORT;
-		  sp.channel = CIPHERED_CHANNEL;
-
-		  link->sendPacket(&sp);
-
-
 		return 0;
 	}
 
