@@ -79,7 +79,9 @@ struct crtpLinkOperations aeslinkOp =
 
 static CRTPPacket p;
 
+//THIS IS THE ENCRYPTION AND DECRYPTION KEY
 static const byte key[] = {0x57, 0x01, 0x2A, 0x12, 0xA7, 0x7A, 0x12, 0xBA, 0x57, 0x01, 0x2A, 0x12, 0xA7, 0x7A, 0x12, 0xBA};
+
 static byte sendInitVector[] = {0x00, 0x00, 0x00, 0x00};
 static Aes enc;
 static Aes dec;
@@ -107,6 +109,10 @@ static void aeslinkTask(void *param){
 	      {
 	       if(p.size > 2)
 	       {
+	    	   /*
+	    	    * A received packet is dissasembled into their different constitutents, put into arrays
+	    	    * and prepared for decryption.
+	    	    * */
 			   if((p.data[PID_POSITION] & PID_NBR_MASK) != recPid)
 			   {
 				   byte datalength = 0;
@@ -128,7 +134,10 @@ static void aeslinkTask(void *param){
 					memcpy(&recCipherPackageData, &p.data[DATA_START], datalength);
 			   }
 
-
+			   /*
+			    * If a packet is divided into two parts, this second part receives the second packet and adds it
+			    * to the arrays for decryption.
+			    * */
 			   if((p.data[PID_POSITION] & PID_NBR_MASK) == recPid)
 			   {
 				   byte datalength = 0;
@@ -139,6 +148,11 @@ static void aeslinkTask(void *param){
 				   }
 
 			   }
+
+			   /*
+			    * Once the complete packet has been received the data is deciphered.
+			    * */
+
 			   if(messageComplete)
 			   {
 				   int failedDecrypt = 0;
@@ -153,6 +167,7 @@ static void aeslinkTask(void *param){
 						   recAuthData,
 						   AUTH_DATA_SIZE);
 
+				   //This part will only be run if the decryption was successful.
 				   if(!(failedDecrypt))
 				   {
 					   rp.port = (p.data[HEADER_POSITION] & HEADER_PORT_MASK) >> 4;
@@ -187,6 +202,10 @@ static int aeslinkReceiveCRTPPacket(CRTPPacket *p)
 	return -1;
 }
 
+/*
+ * A packet prepares to be sent. A PID is generated, the length is determined, IV is generated,
+ * AAD is added and message is encrypted generating a MAC.
+ * */
 static int aeslinkSendCRTPPacket(CRTPPacket *p)
 {
 	static byte sendPid = 0;
@@ -235,6 +254,8 @@ static int aeslinkSendCRTPPacket(CRTPPacket *p)
 				AUTH_TAG_SIZE,
 				sendAuthData,
 				AUTH_DATA_SIZE);
+
+	//if the encryption is failed the function returns 0.
 	if(failedEncrypt){
 		return 0;
 	}
@@ -246,6 +267,9 @@ static int aeslinkSendCRTPPacket(CRTPPacket *p)
 
 	link->sendPacket(&sp);
 
+	/*
+	 * If the original packet is too large to fit a single packet a second packet is sent.
+	 * */
 
 	if(splitMessage){
 		dataLength = (p->size)-MAX_DATA_IN_FIRST_PACKET;
@@ -255,6 +279,8 @@ static int aeslinkSendCRTPPacket(CRTPPacket *p)
 		memcpy(&sp.data[IV_START], &sendCipherPackageData[MAX_DATA_IN_FIRST_PACKET], dataLength);
 		link->sendPacket(&sp);
 	}
+
+	//The IV is a sequential counter of 4 bytes.
 
 	if(sendInitVector[0] == 0xFF){
 		sendInitVector[0] = 0;
